@@ -16,7 +16,7 @@ class TrackService:
     """Manages shared track data and lap generation."""
     def __init__(self):
         self.history = {
-            "LewisHamilton": [
+            "KimiAntonelli": [
                 {"name": "Q1", "time_str": "1:29.500", "seconds": 89.5},
                 {"name": "Q2", "time_str": "1:28.800", "seconds": 88.8},
                 {"name": "Q3", "time_str": "1:28.200", "seconds": 88.2}
@@ -36,7 +36,7 @@ class TrackService:
 
     def run_lap(self, driver_name: str, lap_name: str, aggressiveness: int):
         last_lap_seconds = self.get_last_lap_seconds(driver_name)
-        other_driver = "GeorgeRussell" if "Hamilton" in driver_name else "LewisHamilton"
+        other_driver = "GeorgeRussell" if "Antonelli" in driver_name else "KimiAntonelli"
         other_driver_latest = self.get_last_lap_seconds(other_driver)
 
         crash_chance = aggressiveness * 0.05
@@ -108,10 +108,10 @@ def create_pit_wall_system():
         tools=[get_live_timing_data]
     )
 
-    lewis_hamilton = LlmAgent(
-        name="LewisHamilton",
-        description="Lewis Hamilton.",
-        instruction="You are Lewis Hamilton. Use 'drive_new_lap' when told.",
+    kimi_antonelli = LlmAgent(
+        name="KimiAntonelli",
+        description="Kimi Antonelli.",
+        instruction="You are Kimi Antonelli. Use 'drive_new_lap' when told.",
         model=MODEL_NAME,
         tools=[drive_new_lap]
     )
@@ -140,7 +140,7 @@ def create_pit_wall_system():
         - Use 'get_live_timing_data' to check the timing sheet.
         """,
         model=MODEL_NAME,
-        sub_agents=[data_analyst, lewis_hamilton, george_russell, strategist],
+        sub_agents=[data_analyst, kimi_antonelli, george_russell, strategist],
         tools=[drive_new_lap, get_live_timing_data]
     )
     
@@ -155,7 +155,7 @@ def create_pit_wall_system():
 # --- Streamlit UI Components ---
 
 def render_miami_track(active_dur, last_dur, other_dur, driver_name, key_suffix=""):
-    active_color = "#A020F0" if "Hamilton" in driver_name else "#00D2BE"
+    active_color = "#A020F0" if "Antonelli" in driver_name else "#00D2BE"
     last_lap_color = "#FFFF00"
     other_driver_color = "#FF4B4B"
     bg_color = "#1e1e1e"
@@ -225,7 +225,7 @@ with st.sidebar:
     st.header("📊 Live Timing Sheet")
     timing_data = st.session_state.track_service.get_all_times()
     for driver, laps in timing_data.items():
-        with st.expander(f"{'Lewis Hamilton' if 'Hamilton' in driver else 'George Russell'}", expanded=True):
+        with st.expander(f"{'Kimi Antonelli' if 'Antonelli' in driver else 'George Russell'}", expanded=True):
             for lap, time_val in laps.items():
                 st.text(f"{lap}: {time_val}")
 
@@ -233,7 +233,7 @@ with st.sidebar:
 for idx, msg in enumerate(st.session_state.messages):
     role = msg["role"]
     if msg.get("type") == "text":
-        avatar = "👨‍💼" if role == "TotoWolff" else "🟣" if "Hamilton" in role else "🔵" if "Russell" in role else "📊"
+        avatar = "👨‍💼" if role == "TotoWolff" else "🟣" if "Antonelli" in role else "🔵" if "Russell" in role else "📊"
         with st.chat_message("assistant" if role != "user" else "user", avatar=avatar if role != "user" else "🧑‍💻"):
             st.markdown(f"**{role}:** {msg['content']}")
     
