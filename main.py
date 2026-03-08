@@ -15,7 +15,7 @@ class TrackService:
     def __init__(self):
         # Initial dummy data
         self.laps = {
-            "LewisHamilton": {
+            "KimiAntonelli": {
                 "Q1": 89.5, "Q2": 88.8, "Q3": 88.2
             },
             "GeorgeRussell": {
@@ -83,12 +83,12 @@ def create_agents():
         model=MODEL_NAME
     )
 
-    # 2. Lewis Hamilton - Can run laps
-    lewis_hamilton = LlmAgent(
-        name="LewisHamilton",
-        description="Lewis Hamilton, driver for Mercedes F1. Can run new laps.",
+    # 2. Kimi Antonelli - Can run laps
+    kimi_antonelli = LlmAgent(
+        name="KimiAntonelli",
+        description="Kimi Antonelli, driver for Mercedes F1. Can run new laps.",
         instruction="""
-        You are Lewis Hamilton. You can run new laps when instructed by Toto.
+        You are Kimi Antonelli. You can run new laps when instructed by Toto.
         If you are told to start a new lap, use the 'drive_new_lap' tool.
         You must specify the lap_name and aggressiveness (1-10) as instructed.
         Report back how the lap felt (or if you crashed).
@@ -128,13 +128,13 @@ def create_agents():
         description="Toto Wolff, the Mercedes F1 Team Principal.",
         instruction="""
         You are Toto Wolff. You lead the team.
-        - If the fan wants a new lap, instruct the specific driver (Lewis or George) to 'drive_new_lap'.
+        - If the fan wants a new lap, instruct the specific driver (Kimi or George) to 'drive_new_lap'.
         - You must tell them the lap name and aggressiveness level (1-10) requested by the fan.
         - After a lap is completed, ask the Data Analyst for the official time and then tell the fan.
         - If there is a crash, be supportive but firm—we need those points!
         """,
         model=MODEL_NAME,
-        sub_agents=[data_analyst, lewis_hamilton, george_russell, strategist]
+        sub_agents=[data_analyst, kimi_antonelli, george_russell, strategist]
     )
     
     return toto_wolff
@@ -156,7 +156,7 @@ async def run_pit_wall():
     print("--- MERCEDES F1 PIT WALL: MIAMI QUALIFYING (LIVE) ---")
     print("="*60)
     print("Toto Wolff: 'The track is ready. We can run new laps if you want.'")
-    print("Example: 'Toto, tell Lewis to run a lap named HotLap with aggressiveness 8.'\n")
+    print("Example: 'Toto, tell Kimi to run a lap named HotLap with aggressiveness 8.'\n")
 
     while True:
         try:
@@ -177,7 +177,7 @@ async def run_pit_wall():
                         if hasattr(part, 'text') and part.text:
                             color = "\033[1;34m" 
                             if event.author == "TotoWolff": color = "\033[1;36m"
-                            elif "Hamilton" in event.author: color = "\033[1;35m"
+                            elif "Antonelli" in event.author: color = "\033[1;35m"
                             elif "Russell" in event.author: color = "\033[1;33m"
                             print(f"{color}{event.author}:\033[0m {part.text}")
                 
