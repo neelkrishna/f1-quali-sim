@@ -12,21 +12,31 @@ load_dotenv()
 
 MODEL_NAME = "gemini-2.5-flash"
 
+TEAMS = {
+    "Mercedes": {"principal": "TotoWolff", "drivers": ["KimiAntonelli", "GeorgeRussell"], "color": "#00D2BE"},
+    "McLaren": {"principal": "AndreaStella", "drivers": ["LandoNorris", "OscarPiastri"], "color": "#FF8000"},
+    "Ferrari": {"principal": "FredVasseur", "drivers": ["CharlesLeclerc", "LewisHamilton"], "color": "#DC0000"},
+    "RedBull": {"principal": "ChristianHorner", "drivers": ["MaxVerstappen", "IsackHadjar"], "color": "#0600EF"}
+}
+
+def get_team_for_driver(driver_name: str):
+    for team_name, data in TEAMS.items():
+        if driver_name in data["drivers"]:
+            return team_name, data
+    # Fallback
+    return "Mercedes", TEAMS["Mercedes"]
+
 class TrackService:
     """Manages shared track data and lap generation."""
     def __init__(self):
-        self.history = {
-            "KimiAntonelli": [
-                {"name": "Q1", "time_str": "1:29.500", "seconds": 89.5},
-                {"name": "Q2", "time_str": "1:28.800", "seconds": 88.8},
-                {"name": "Q3", "time_str": "1:28.200", "seconds": 88.2}
-            ],
-            "GeorgeRussell": [
-                {"name": "Q1", "time_str": "1:29.600", "seconds": 89.6},
-                {"name": "Q2", "time_str": "1:29.100", "seconds": 89.1},
-                {"name": "Q3", "time_str": "1:28.500", "seconds": 88.5}
-            ]
-        }
+        self.history = {}
+        for team, data in TEAMS.items():
+            for driver in data["drivers"]:
+                self.history[driver] = [
+                    {"name": "Q1", "time_str": f"1:{random.uniform(28.5, 29.5):06.3f}", "seconds": 89.5},
+                    {"name": "Q2", "time_str": f"1:{random.uniform(28.0, 29.0):06.3f}", "seconds": 88.8},
+                    {"name": "Q3", "time_str": f"1:{random.uniform(27.5, 28.5):06.3f}", "seconds": 88.2}
+                ]
         self.crashes = []
 
     def get_last_lap_seconds(self, driver_name):
@@ -36,7 +46,10 @@ class TrackService:
 
     def run_lap(self, driver_name: str, lap_name: str, aggressiveness: int):
         last_lap_seconds = self.get_last_lap_seconds(driver_name)
-        other_driver = "GeorgeRussell" if "Antonelli" in driver_name else "KimiAntonelli"
+        
+        team_name, team_data = get_team_for_driver(driver_name)
+        drivers = team_data["drivers"]
+        other_driver = drivers[1] if drivers[0] == driver_name else drivers[0]
         other_driver_latest = self.get_last_lap_seconds(other_driver)
 
         crash_chance = aggressiveness * 0.05
@@ -100,51 +113,61 @@ def create_pit_wall_system():
     def get_live_timing_data() -> str:
         return str(service.get_all_times())
 
-    data_analyst = LlmAgent(
-        name="DataAnalyst",
-        description="Data Analyst.",
-        instruction="You are the Data Analyst. Use 'get_live_timing_data' for latest lap times.",
-        model=MODEL_NAME,
-        tools=[get_live_timing_data]
-    )
+    def create_team_agents(team_name: str, principal_name: str, drivers: list[str]):
+        data_analyst = LlmAgent(
+            name=f"{team_name}DataAnalyst",
+            description=f"{team_name} Data Analyst.",
+            instruction=f"You are the {team_name} Data Analyst. Use 'get_live_timing_data' for latest lap times.",
+            model=MODEL_NAME,
+            tools=[get_live_timing_data]
+        )
 
-    kimi_antonelli = LlmAgent(
-        name="KimiAntonelli",
-        description="Kimi Antonelli.",
-        instruction="You are Kimi Antonelli. Use 'drive_new_lap' when told.",
-        model=MODEL_NAME,
-        tools=[drive_new_lap]
-    )
+        driver_agents = []
+        for driver_name in drivers:
+            driver_agents.append(LlmAgent(
+                name=driver_name,
+                description=f"{driver_name}, driver for {team_name}.",
+                instruction=f"You are {driver_name}. Use 'drive_new_lap' when told. You must specify your name as driver_name.",
+                model=MODEL_NAME,
+                tools=[drive_new_lap]
+            ))
 
-    george_russell = LlmAgent(
-        name="GeorgeRussell",
-        description="George Russell.",
-        instruction="You are George Russell. Use 'drive_new_lap' when told.",
-        model=MODEL_NAME,
-        tools=[drive_new_lap]
-    )
+        strategist = LlmAgent(
+            name=f"{team_name}Strategist",
+            description=f"{team_name} Strategist.",
+            instruction=f"You are the {team_name} Strategist. Analyze times. Consult DataAnalyst.",
+            model=MODEL_NAME
+        )
 
-    strategist = LlmAgent(
-        name="Strategist",
-        description="Strategist.",
-        instruction="Analyze times. Consult DataAnalyst.",
-        model=MODEL_NAME
-    )
+        principal = LlmAgent(
+            name=principal_name,
+            description=f"{principal_name}, {team_name} Team Principal.",
+            instruction=f"""
+            You are {principal_name}.
+            - Talk to {team_name} Data Analyst for lap times.
+            - Transfer to your drivers ({','.join(drivers)}) when requested to run laps.
+            """,
+            model=MODEL_NAME,
+            sub_agents=[data_analyst, strategist] + driver_agents,
+        )
+        return principal
 
-    toto_wolff = LlmAgent(
-        name="TotoWolff",
-        description="Toto Wolff.",
+    team_principals = []
+    for team_name, data in TEAMS.items():
+        team_principals.append(create_team_agents(team_name, data["principal"], data["drivers"]))
+
+    coordinator = LlmAgent(
+        name="Coordinator",
+        description="F1 Coordinator. Route requests to correct Team Principal.",
         instruction="""
-        You are Toto Wolff.
-        - Use 'drive_new_lap' to run laps or delegate.
-        - Use 'get_live_timing_data' to check the timing sheet.
+        You are the F1 Coordinator Super Agent. Transfer user requests to the correct Team Principal (TotoWolff, AndreaStella, FredVasseur, ChristianHorner).
+        If the user asks to instruct a driver, transfer to the driver's Team Principal.
         """,
         model=MODEL_NAME,
-        sub_agents=[data_analyst, kimi_antonelli, george_russell, strategist],
-        tools=[drive_new_lap, get_live_timing_data]
+        sub_agents=team_principals
     )
     
-    runner = InMemoryRunner(agent=toto_wolff)
+    runner = InMemoryRunner(agent=coordinator)
     runner.session_service.create_session_sync(
         app_name=runner.app_name, 
         user_id="fan_user", 
@@ -155,9 +178,10 @@ def create_pit_wall_system():
 # --- Streamlit UI Components ---
 
 def render_miami_track(active_dur, last_dur, other_dur, driver_name, key_suffix=""):
-    active_color = "#A020F0" if "Antonelli" in driver_name else "#00D2BE"
+    team_name, team_data = get_team_for_driver(driver_name)
+    active_color = team_data["color"]
     last_lap_color = "#FFFF00"
-    other_driver_color = "#FF4B4B"
+    other_driver_color = "#FFFFFF"
     bg_color = "#1e1e1e"
     track_path = "M420,180 L460,180 Q480,180 480,160 L480,100 Q480,80 460,80 L350,80 Q330,80 320,100 L300,140 Q290,160 270,160 L150,160 Q130,160 120,140 L100,100 Q90,80 70,80 L40,80 Q20,80 20,100 L20,160 Q20,180 40,180 L100,180 Q120,180 130,160 L150,120 Q160,100 180,100 L280,100 Q300,100 310,120 L330,160 Q340,180 360,180 Z"
 
@@ -168,7 +192,7 @@ def render_miami_track(active_dur, last_dur, other_dur, driver_name, key_suffix=
     html_code = f"""
     <div style="background: {bg_color}; padding: 20px; border-radius: 15px; border: 2px solid #333; text-align: center; color: white; font-family: sans-serif;">
         <div style="display: flex; justify-content: space-around; margin-bottom: 10px; font-size: 0.8em;">
-            <span style="color: {active_color}">● LIVE</span>
+            <span style="color: {active_color}">● LIVE ({team_name})</span>
             {f'<span style="color: {last_lap_color}">● PREV</span>' if last_dur else ''}
             {f'<span style="color: {other_driver_color}">● MATE</span>' if other_dur else ''}
         </div>
@@ -208,32 +232,55 @@ def render_miami_track(active_dur, last_dur, other_dur, driver_name, key_suffix=
 
 # --- Streamlit Session State ---
 
-st.set_page_config(page_title="Mercedes F1 Pit Wall", page_icon="🏎️", layout="wide")
+st.set_page_config(page_title="2026 F1 Pit Wall", page_icon="🏎️", layout="wide")
 
 if "system_initialized" not in st.session_state:
     service, runner, shared_ctx = create_pit_wall_system()
     st.session_state.track_service = service
     st.session_state.runner = runner
     st.session_state.shared_ctx = shared_ctx
-    st.session_state.messages = [{"role": "TotoWolff", "type": "text", "content": "Hello! I am Toto. Welcome to our pit wall."}]
+    st.session_state.messages = [{"role": "Coordinator", "type": "text", "content": "Welcome to the 2026 F1 Pit Wall. I am the Coordinator. Which team or driver would you like to speak to?"}]
     st.session_state.system_initialized = True
 
-st.title("🏁 Mercedes F1 Pit Wall: Miami Qualifying")
+st.title("🏁 2026 F1 Pit Wall: Miami Qualifying")
 
 # Sidebar
 with st.sidebar:
     st.header("📊 Live Timing Sheet")
     timing_data = st.session_state.track_service.get_all_times()
-    for driver, laps in timing_data.items():
-        with st.expander(f"{'Kimi Antonelli' if 'Antonelli' in driver else 'George Russell'}", expanded=True):
-            for lap, time_val in laps.items():
-                st.text(f"{lap}: {time_val}")
+    
+    for team_name, data in TEAMS.items():
+        with st.expander(f"{team_name} Racing", expanded=True):
+            for driver in data["drivers"]:
+                st.markdown(f"**{driver}**")
+                if driver in timing_data:
+                    for lap, time_val in timing_data[driver].items():
+                        st.text(f"  {lap}: {time_val}")
+                else:
+                    st.text("  No times set")
 
 # Chat Rendering
 for idx, msg in enumerate(st.session_state.messages):
     role = msg["role"]
     if msg.get("type") == "text":
-        avatar = "👨‍💼" if role == "TotoWolff" else "🟣" if "Antonelli" in role else "🔵" if "Russell" in role else "📊"
+        avatar = "🤖" # default
+        
+        # Determine avatar type based on role
+        if role == "Coordinator":
+            avatar = "👑"
+        else:
+            is_principal = any(role == data["principal"] for data in TEAMS.values())
+            is_driver = any(role in data["drivers"] for data in TEAMS.values())
+            
+            if is_principal:
+                avatar = "👨‍💼"
+            elif is_driver:
+                avatar = "🏎️"
+            elif "Analyst" in role:
+                avatar = "📊"
+            elif "Strategist" in role:
+                avatar = "📈"
+
         with st.chat_message("assistant" if role != "user" else "user", avatar=avatar if role != "user" else "🧑‍💻"):
             st.markdown(f"**{role}:** {msg['content']}")
     
@@ -256,7 +303,7 @@ for idx, msg in enumerate(st.session_state.messages):
                     st.rerun()
 
 # User Input
-if prompt := st.chat_input("Message Toto Wolff..."):
+if prompt := st.chat_input("Message the Coordinator..."):
     st.session_state.messages.append({"role": "user", "type": "text", "content": prompt})
     st.rerun() # Immediate rerun to show user message
 
@@ -280,7 +327,7 @@ if st.session_state.messages[-1]["role"] == "user":
                     for c in calls:
                         if "transfer_to_agent" in c.name:
                             target = c.args.get('agent_name', 'someone')
-                            st.session_state.messages.append({"role": "system", "type": "system", "content": f"[Toto is consulting {target}...]"})
+                            st.session_state.messages.append({"role": "system", "type": "system", "content": f"[{event.author} is consulting {target}...]"})
                         elif "drive_new_lap" in c.name:
                             st.session_state.messages.append({"role": "system", "type": "system", "content": f"🔥 [ENGINE REVVING: {event.author} is starting a new lap!]"})
 
